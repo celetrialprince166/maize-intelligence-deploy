@@ -93,6 +93,21 @@ data "aws_iam_policy_document" "scoped_iam_management" {
       "arn:aws:iam::*:instance-profile/EC2-DynamoDB-StagingRole",
     ]
   }
+
+  # PowerUserAccess deliberately excludes all of IAM, so without this the
+  # data "aws_iam_openid_connect_provider" lookup (used when
+  # create_oidc_provider = false) can't even read the existing provider —
+  # a real 403 hit running terraform plan in CI. Both actions require
+  # Resource = "*" per AWS (OIDC provider IAM actions aren't resource-level
+  # scopable), but they're read-only.
+  statement {
+    sid = "ReadOidcProviderForDataLookup"
+    actions = [
+      "iam:ListOpenIDConnectProviders",
+      "iam:GetOpenIDConnectProvider",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "scoped_iam_management" {
