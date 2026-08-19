@@ -1,0 +1,64 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.production
+*.json
+!package.json
+!package-lock.json
+!model_metadata.json
+!tsconfig.json
+
+# GEE service account keys
+*-key.json
+ghana-project-*.json
+gee-key.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# ML model files (stored in S3, not git)
+*.joblib
+*.pkl
+*.h5
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+docker-build.log
+
+# Terraform
+**/.terraform/
+*.tfplan
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Backend runtime artifacts
+backend/prediction_log.jsonl
+
+# Data files
+*.csv
+*.geojson
+*.zip
+*.shp
+*.dbf
+*.shx
+*.prj

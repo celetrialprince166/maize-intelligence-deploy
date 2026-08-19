@@ -1,0 +1,14 @@
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+tests
+.env
+*.env
+.env.*
+!.env.example
+*.jsonl
+*.pem
+gee-key.json
+gee-service-account*.json
+.git

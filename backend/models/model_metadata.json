@@ -1,0 +1,37 @@
+{
+  "feature_columns": [
+    "NDVI",
+    "EVI",
+    "NDMI",
+    "GCVI",
+    "LSWI",
+    "NDRE",
+    "MTCI",
+    "B4_red",
+    "B8_nir",
+    "B11_swir1",
+    "elevation",
+    "slope",
+    "precip",
+    "temp_max",
+    "SOC"
+  ],
+  "classifier_cv_accuracy": 0.8765079365079366,
+  "regressor_cv_r2": -0.2347885676848669,
+  "regressor_cv_rmse": 1.401577500768212,
+  "samples_classifier": 178,
+  "samples_regressor": 127,
+  "yield_range": [
+    0.1907,
+    6.4
+  ],
+  "study_area": "Northern Ghana",
+  "years": [
+    2021,
+    2022,
+    2023
+  ],
+  "season": "June-October",
+  "resolution": "20m",
+  "crs": "EPSG:32630"
+}

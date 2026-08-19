@@ -1,0 +1,46 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    image: ${BACKEND_IMAGE:-maize-backend:local}
+    environment:
+      AWS_REGION: ${AWS_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      DYNAMODB_FARMS_TABLE: ${DYNAMODB_FARMS_TABLE}
+      DYNAMODB_USERS_TABLE: ${DYNAMODB_USERS_TABLE}
+      COGNITO_REGION: ${COGNITO_REGION}
+      COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID}
+      COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      GEE_SERVICE_ACCOUNT_KEY: /run/secrets/gee-key.json
+    volumes:
+      - prediction-log:/app/prediction_log.jsonl
+      - ${GEE_KEY_HOST_PATH:-./gee-key.json}:/run/secrets/gee-key.json:ro
+    networks: [app]
+    restart: unless-stopped
+    expose: ["8000"]
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_COGNITO_REGION: ${COGNITO_REGION}
+        VITE_COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID}
+        VITE_COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}
+        VITE_MAPBOX_TOKEN: ${MAPBOX_TOKEN:-}
+    image: ${FRONTEND_IMAGE:-maize-frontend:local}
+    environment:
+      NGINX_TLS_COMMON_NAME: ${PUBLIC_IP:-localhost}
+    depends_on: [backend]
+    networks: [app]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+
+networks:
+  app: {}
+
+volumes:
+  prediction-log: {}

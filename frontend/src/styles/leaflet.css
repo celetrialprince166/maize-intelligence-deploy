@@ -1,0 +1,2 @@
+/* Leaflet CSS from CDN to avoid build issues with image assets */
+@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');

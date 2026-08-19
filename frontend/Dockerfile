@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+FROM node:22-alpine AS build
+WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+
+# Baked into the static bundle at build time by Vite — these are public
+# client-side values (API base URL, Cognito pool/client IDs), not secrets.
+# Supplied via --build-arg from CI, sourced from Terraform outputs /
+# GitHub Environment variables — never hardcoded here.
+ARG VITE_API_URL
+ARG VITE_COGNITO_REGION
+ARG VITE_COGNITO_USER_POOL_ID
+ARG VITE_COGNITO_CLIENT_ID
+ARG VITE_MAPBOX_TOKEN
+ENV VITE_API_URL=${VITE_API_URL} \
+    VITE_COGNITO_REGION=${VITE_COGNITO_REGION} \
+    VITE_COGNITO_USER_POOL_ID=${VITE_COGNITO_USER_POOL_ID} \
+    VITE_COGNITO_CLIENT_ID=${VITE_COGNITO_CLIENT_ID} \
+    VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN}
+RUN npm run build
+
+FROM nginx:1.27-alpine
+RUN apk add --no-cache openssl curl
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.sh /docker-entrypoint.d/50-generate-self-signed-cert.sh
+RUN chmod +x /docker-entrypoint.d/50-generate-self-signed-cert.sh
+COPY --from=build /build/dist /usr/share/nginx/html
+
+EXPOSE 80 443
+# Checks nginx itself is serving, independent of backend availability —
+# the end-to-end backend proxy path is verified separately via /health.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -kf https://localhost/ || exit 1
