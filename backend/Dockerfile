@@ -22,9 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY --from=builder /install /usr/local
 COPY app/ ./app/
 COPY models/model_metadata.json ./models/model_metadata.json
-# Placeholder so the named volume mounted here in docker-compose.yml
-# initializes as a file, not a directory (prediction_log.py appends to it).
-RUN touch prediction_log.jsonl
 
 RUN groupadd --system app && useradd --system --gid app --no-create-home app \
     && chown -R app:app /app

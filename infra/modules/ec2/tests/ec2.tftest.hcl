@@ -28,6 +28,11 @@ run "imdsv2_enforced" {
     condition     = aws_instance.app.metadata_options[0].http_tokens == "required"
     error_message = "IMDSv2 must be enforced (http_tokens = required)"
   }
+
+  assert {
+    condition     = aws_instance.app.user_data_replace_on_change == true
+    error_message = "user_data edits must actually reach the instance (replace), not silently no-op"
+  }
 }
 
 run "root_volume_is_encrypted" {

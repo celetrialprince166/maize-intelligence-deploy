@@ -1,0 +1,139 @@
+name: CD
+
+# Triggered by CI's completion rather than push directly — this is the
+# pattern GitHub recommends for gating a secrets-bearing deploy workflow on
+# a checks workflow that also runs on PRs (PR runs never get repo secrets;
+# workflow_run always executes with base-repo permissions against the exact
+# commit CI validated). This also means the dependency on CI passing is a
+# hard `if`, not just "ran after" — a failed CI run never reaches this job.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }} # e.g. 183631301567.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+  terraform-apply:
+    name: Terraform apply (infra changes)
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    # Requires a "infra-approval" GitHub Environment with required reviewers
+    # configured in repo settings — infra changes are reviewed, image
+    # deploys below are not. One-time manual setup, not doable from YAML.
+    environment: infra-approval
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Init
+        working-directory: infra/environments/staging
+        run: terraform init -input=false
+      - name: Plan
+        working-directory: infra/environments/staging
+        run: terraform plan -input=false -out=tfplan
+      - name: Apply
+        working-directory: infra/environments/staging
+        run: terraform apply -input=false -auto-approve tfplan
+
+  build-and-push:
+    name: Build & push images to ECR
+    if: github.event.workflow_run.conclusion == 'success'
+    needs: terraform-apply
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_tag: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr-login
+      - name: Build & push backend
+        working-directory: backend
+        run: |
+          docker build -t "$ECR_REGISTRY/maize-staging-backend:${{ github.event.workflow_run.head_sha }}" .
+          docker push "$ECR_REGISTRY/maize-staging-backend:${{ github.event.workflow_run.head_sha }}"
+      - name: Build & push frontend
+        working-directory: frontend
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=/api \
+            --build-arg VITE_COGNITO_REGION=${{ env.AWS_REGION }} \
+            --build-arg VITE_COGNITO_USER_POOL_ID=${{ vars.COGNITO_USER_POOL_ID }} \
+            --build-arg VITE_COGNITO_CLIENT_ID=${{ vars.COGNITO_CLIENT_ID }} \
+            --build-arg VITE_MAPBOX_TOKEN=${{ secrets.MAPBOX_TOKEN }} \
+            -t "$ECR_REGISTRY/maize-staging-frontend:${{ github.event.workflow_run.head_sha }}" .
+          docker push "$ECR_REGISTRY/maize-staging-frontend:${{ github.event.workflow_run.head_sha }}"
+
+  deploy:
+    name: Deploy via SSM (no SSH)
+    if: github.event.workflow_run.conclusion == 'success'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Send deploy command over SSM
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+          GEE_SECRET_NAME: ${{ vars.GEE_SECRET_NAME }}
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters Name=tag:Name,Values=maize-staging-app Name=instance-state-name,Values=running \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+
+          DEPLOY_SCRIPT=$(cat <<SCRIPT
+          set -euo pipefail
+          aws secretsmanager get-secret-value --secret-id '$GEE_SECRET_NAME' --region $AWS_REGION --query SecretString --output text > /opt/app/gee-key.json
+          chmod 600 /opt/app/gee-key.json
+          TOKEN=\$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+          PUBLIC_IP=\$(curl -sH "X-aws-ec2-metadata-token: \$TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+          export BACKEND_IMAGE=$ECR_REGISTRY/maize-staging-backend:$IMAGE_TAG
+          export FRONTEND_IMAGE=$ECR_REGISTRY/maize-staging-frontend:$IMAGE_TAG
+          export PUBLIC_IP=\$PUBLIC_IP
+          export ALLOWED_ORIGINS=https://\$PUBLIC_IP
+          docker compose -f /opt/app/docker-compose.yml pull
+          docker compose -f /opt/app/docker-compose.yml up -d
+          SCRIPT
+          )
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy $IMAGE_TAG" \
+            --parameters "commands=[$(jq -Rsa . <<< "$DEPLOY_SCRIPT")]" \
+            --query 'Command.CommandId' --output text)
+
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"
+          aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}'
