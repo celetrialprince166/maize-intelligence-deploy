@@ -85,7 +85,7 @@ jobs:
             --build-arg VITE_COGNITO_REGION=${{ env.AWS_REGION }} \
             --build-arg VITE_COGNITO_USER_POOL_ID=${{ vars.COGNITO_USER_POOL_ID }} \
             --build-arg VITE_COGNITO_CLIENT_ID=${{ vars.COGNITO_CLIENT_ID }} \
-            --build-arg VITE_MAPBOX_TOKEN=${{ secrets.MAPBOX_TOKEN }} \
+            --build-arg VITE_MAPBOX_TOKEN=${{ vars.MAPBOX_TOKEN }} \
             -t "$ECR_REGISTRY/maize-staging-frontend:${{ github.event.workflow_run.head_sha }}" .
           docker push "$ECR_REGISTRY/maize-staging-frontend:${{ github.event.workflow_run.head_sha }}"
       - name: Check ECR scan findings (fail on CRITICAL)
