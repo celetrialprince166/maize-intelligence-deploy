@@ -119,7 +119,11 @@ jobs:
           cat > deploy_script.sh <<'EOF'
           set -euo pipefail
           aws secretsmanager get-secret-value --secret-id '__GEE_SECRET_NAME__' --region __AWS_REGION__ --query SecretString --output text > /opt/app/gee-key.json
-          chmod 600 /opt/app/gee-key.json
+          # 644, not 600: the file is root-owned but read inside the
+          # container by the non-root `app` user (Dockerfile USER app) via
+          # a bind mount, which keeps host ownership/perms as-is — 600
+          # caused a real "Permission denied" hit in the backend at runtime.
+          chmod 644 /opt/app/gee-key.json
           TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
           PUBLIC_IP=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
           aws ecr get-login-password --region __AWS_REGION__ | docker login --username AWS --password-stdin __ECR_REGISTRY__
