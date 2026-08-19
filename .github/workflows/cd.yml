@@ -37,7 +37,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.6.6"
+          terraform_version: "1.14.1"
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
