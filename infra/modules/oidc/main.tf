@@ -115,3 +115,32 @@ resource "aws_iam_role_policy" "scoped_iam_management" {
   role   = aws_iam_role.github_actions_deploy.id
   policy = data.aws_iam_policy_document.scoped_iam_management.json
 }
+
+# Separate from scoped_iam_management above so that policy's test can
+# assert every Resource is scoped to EC2-DynamoDB-StagingRole without this
+# self-referencing ARN (which is unknown at plan time for a fresh test run,
+# unlike in the real environment where the role already exists) muddying
+# that assertion. PowerUserAccess excludes IAM entirely, so without this
+# Terraform can't even refresh its own role/policy/attachment in state.
+resource "aws_iam_role_policy" "self_management" {
+  name = "self-management"
+  role = aws_iam_role.github_actions_deploy.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ManageSelf"
+      Effect = "Allow"
+      Action = [
+        "iam:GetRole",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:GetRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:TagRole",
+      ]
+      Resource = aws_iam_role.github_actions_deploy.arn
+    }]
+  })
+}
