@@ -39,7 +39,7 @@ run "trust_policy_is_scoped_to_this_repo_only" {
   }
 
   assert {
-    condition     = jsondecode(data.aws_iam_policy_document.github_actions_trust.json).Statement[0].Condition.StringLike["token.actions.githubusercontent.com:sub"] == "repo:celetrialprince166/maize-intelligence-deploy:*"
+    condition     = jsondecode(data.aws_iam_policy_document.github_actions_trust.json).Statement[0].Condition.StringLike["token.actions.githubusercontent.com:sub"] == "repo:celetrialprince166@*/maize-intelligence-deploy@*:*"
     error_message = "Trust policy sub condition must be scoped to this exact repo, not a wildcard across all repos"
   }
 

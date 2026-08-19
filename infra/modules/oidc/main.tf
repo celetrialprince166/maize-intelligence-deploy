@@ -41,7 +41,12 @@ data "aws_iam_policy_document" "github_actions_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_org}/${var.github_repo}:*"]
+      # GitHub's OIDC sub claim now embeds immutable numeric org/repo IDs
+      # (e.g. repo:org@12345/repo@67890:ref:...), confirmed via CloudTrail
+      # on a real AssumeRoleWithWebIdentity rejection — the "@<id>" wildcards
+      # below still scope this to exactly this org+repo, just tolerant of
+      # the ID suffix GitHub inserts.
+      values = ["repo:${var.github_org}@*/${var.github_repo}@*:*"]
     }
   }
 }
