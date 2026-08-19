@@ -21,6 +21,10 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN}
 RUN npm run build
 
+# The master process runs as root (the official nginx:alpine image's own
+# design — root is needed to bind ports 80/443 and manage worker
+# processes); worker processes that actually handle requests already drop
+# to the unprivileged `nginx` user by default. Not overridden here.
 FROM nginx:1.27-alpine
 RUN apk add --no-cache openssl curl
 COPY nginx.conf /etc/nginx/conf.d/default.conf
