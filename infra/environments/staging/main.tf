@@ -68,5 +68,12 @@ module "ec2" {
   subnet_id             = module.network.public_subnet_id
   security_group_id     = module.security_group.security_group_id
   instance_profile_name = module.iam.instance_profile_name
-  user_data             = file("${path.module}/user_data.sh")
+  user_data = templatefile("${path.module}/user_data.sh.tftpl", {
+    aws_region           = var.aws_region
+    model_bucket_name    = var.model_bucket_name
+    farms_table_name     = var.farms_table_name
+    users_table_name     = var.users_table_name
+    cognito_user_pool_id = var.cognito_user_pool_id
+    cognito_client_id    = var.cognito_client_id
+  })
 }

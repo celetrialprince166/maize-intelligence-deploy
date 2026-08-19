@@ -57,3 +57,13 @@ variable "model_bucket_name" {
   type    = string
   default = "maize-intelligence-models-104702104957"
 }
+
+variable "cognito_user_pool_id" {
+  type    = string
+  default = "us-east-1_vfe6JbU6G"
+}
+
+variable "cognito_client_id" {
+  type    = string
+  default = "744ah7v7iddsshrm9mm02bnd9i"
+}

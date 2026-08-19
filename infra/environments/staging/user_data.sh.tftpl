@@ -3,6 +3,14 @@
 # application deploy (compose file, secrets fetch, `docker compose up`) is
 # pushed later via `aws ssm send-command` from CI, not baked in here, so a
 # new release never requires relaunching the instance.
+#
+# This is a Terraform templatefile() — ${aws_region} etc. below are
+# substituted from the same variables.tf values the rest of this
+# environment uses (single source of truth, not re-hardcoded here).
+# $${BACKEND_IMAGE} etc. below (double-dollar) are ESCAPED so they render
+# as a literal single-dollar reference in the compose file — those are
+# resolved by `docker compose` from shell env vars the CD deploy script
+# exports, not by Terraform.
 set -euo pipefail
 
 dnf install -y docker
@@ -22,16 +30,16 @@ mkdir -p /opt/app
 cat > /opt/app/docker-compose.yml <<'COMPOSE_EOF'
 services:
   backend:
-    image: ${BACKEND_IMAGE}
+    image: $${BACKEND_IMAGE}
     environment:
-      AWS_REGION: us-east-1
-      S3_BUCKET: maize-intelligence-models-104702104957
-      DYNAMODB_FARMS_TABLE: maize-intelligence-farms
-      DYNAMODB_USERS_TABLE: maize-intelligence-users
-      COGNITO_REGION: us-east-1
-      COGNITO_USER_POOL_ID: us-east-1_vfe6JbU6G
-      COGNITO_CLIENT_ID: 744ah7v7iddsshrm9mm02bnd9i
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      AWS_REGION: ${aws_region}
+      S3_BUCKET: ${model_bucket_name}
+      DYNAMODB_FARMS_TABLE: ${farms_table_name}
+      DYNAMODB_USERS_TABLE: ${users_table_name}
+      COGNITO_REGION: ${aws_region}
+      COGNITO_USER_POOL_ID: ${cognito_user_pool_id}
+      COGNITO_CLIENT_ID: ${cognito_client_id}
+      ALLOWED_ORIGINS: $${ALLOWED_ORIGINS}
       GEE_SERVICE_ACCOUNT_KEY: /run/secrets/gee-key.json
     volumes:
       - /opt/app/gee-key.json:/run/secrets/gee-key.json:ro
@@ -40,9 +48,9 @@ services:
     expose: ["8000"]
 
   frontend:
-    image: ${FRONTEND_IMAGE}
+    image: $${FRONTEND_IMAGE}
     environment:
-      NGINX_TLS_COMMON_NAME: ${PUBLIC_IP}
+      NGINX_TLS_COMMON_NAME: $${PUBLIC_IP}
     depends_on: [backend]
     networks: [app]
     restart: unless-stopped

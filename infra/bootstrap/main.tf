@@ -1,8 +1,11 @@
 # Bootstraps the S3 bucket + DynamoDB lock table that infra/environments/*
-# use as a Terraform remote state backend. Applied once, by hand, with
-# local state (there's no backend to point to yet — that's the point).
-# Naming follows the *-tfstate-<account>-<region> convention already used
-# elsewhere in this AWS account.
+# use as a Terraform remote state backend. First apply necessarily used
+# local state (there was no backend to point to yet); once the bucket/table
+# existed, this config's own state was migrated into them too via
+# `terraform init -migrate-state`, so a lost local state file no longer
+# makes these resources unmanaged. Naming follows the
+# *-tfstate-<account>-<region> convention already used elsewhere in this
+# AWS account.
 
 terraform {
   required_version = ">= 1.6.0"
@@ -11,6 +14,16 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+  }
+
+  backend "s3" {
+    bucket = "maize-tfstate-183631301567-us-east-1"
+    key    = "bootstrap/terraform.tfstate"
+    region = "us-east-1"
+    # No dynamodb_table here on purpose: the lock table is one of the two
+    # resources THIS config creates, so it can't depend on itself existing
+    # for locking to work on the very first apply. Fine in practice —
+    # bootstrap is applied rarely and by one person.
   }
 }
 

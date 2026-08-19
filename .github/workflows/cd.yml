@@ -88,6 +88,42 @@ jobs:
             --build-arg VITE_MAPBOX_TOKEN=${{ secrets.MAPBOX_TOKEN }} \
             -t "$ECR_REGISTRY/maize-staging-frontend:${{ github.event.workflow_run.head_sha }}" .
           docker push "$ECR_REGISTRY/maize-staging-frontend:${{ github.event.workflow_run.head_sha }}"
+      - name: Check ECR scan findings (fail on CRITICAL)
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # scan_on_push means the scan starts the moment the push above
+          # completes, but it's async — poll each repo until it's done,
+          # then gate the deploy on it instead of leaving scan-on-push as a
+          # checkbox nobody reads.
+          for repo in maize-staging-backend maize-staging-frontend; do
+            echo "Waiting for scan: $repo:$IMAGE_TAG"
+            for i in $(seq 1 30); do
+              STATUS=$(aws ecr describe-image-scan-findings \
+                --repository-name "$repo" --image-id imageTag="$IMAGE_TAG" \
+                --region "$AWS_REGION" --query 'imageScanStatus.status' --output text 2>/dev/null || echo "IN_PROGRESS")
+              [ "$STATUS" = "COMPLETE" ] && break
+              [ "$STATUS" = "FAILED" ] && { echo "Scan failed for $repo"; exit 1; }
+              sleep 5
+            done
+
+            CRITICAL=$(aws ecr describe-image-scan-findings \
+              --repository-name "$repo" --image-id imageTag="$IMAGE_TAG" \
+              --region "$AWS_REGION" \
+              --query 'imageScanFindings.findingSeverityCounts.CRITICAL' --output text 2>/dev/null || echo 0)
+            HIGH=$(aws ecr describe-image-scan-findings \
+              --repository-name "$repo" --image-id imageTag="$IMAGE_TAG" \
+              --region "$AWS_REGION" \
+              --query 'imageScanFindings.findingSeverityCounts.HIGH' --output text 2>/dev/null || echo 0)
+            [ "$CRITICAL" = "None" ] && CRITICAL=0
+            [ "$HIGH" = "None" ] && HIGH=0
+            echo "$repo: $CRITICAL CRITICAL, $HIGH HIGH findings"
+
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "::error::$repo:$IMAGE_TAG has $CRITICAL CRITICAL vulnerabilities — blocking deploy"
+              exit 1
+            fi
+          done
 
   deploy:
     name: Deploy via SSM (no SSH)
