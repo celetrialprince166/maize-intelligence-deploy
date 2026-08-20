@@ -62,3 +62,6 @@ backend/prediction_log.jsonl
 *.dbf
 *.shx
 *.prj
+
+# Local editor/tooling config (not part of the deliverable)
+.claude/
