@@ -102,7 +102,7 @@ one.
 | **Insufficient IAM permissions blocked the assessment initially.** `iam:ListRoles`, `iam:ListPolicies`, `iam:CreateRole` and `ec2:RunInstances` were all denied, so neither the required role nor an instance could be created. | Raised with the account administrator. Permissions were widened and `EC2-DynamoDB-StagingRole` was made available, at which point the deployment could proceed. |
 | **AWS CLI could not authenticate**, and CloudShell could not start ("Unable to create the environment"), so no command-line access to the account was available. | Worked through the console, then used SSH to the instance for all command-line work. |
 | **`iam:ListInstanceProfiles` denied**, so the launch wizard's IAM instance profile dropdown could not populate. | Used the wizard's "Specify a custom value" option to enter `EC2-DynamoDB-StagingRole` directly. |
-| **The instance came up but served nothing, twice, with no diagnostic trail.** | Adding an SSH key pair made the cause visible immediately: `/var/lib/cloud/instance/user-data.txt` was **0 bytes**. The bootstrap script had never reached the instance, so nothing was ever installed. Resolved by copying the script over SSH and running it directly. It is now committed as `ops/bootstrap-ec2.sh`, and its header documents the User-data caveat. |
+| **The instance came up but served nothing, twice, with no diagnostic trail.** The provisioning script was supplied as EC2 user-data, but nothing was ever installed. | Launching with an SSH key pair made the cause visible in one command: `/var/lib/cloud/instance/user-data.txt` was **0 bytes** — the script had never reached the instance. The launch form had been populated programmatically rather than typed, and the value never registered with the form, so the launch request carried empty user-data. Resolved by running the identical script over SSH, which also streams build output live. Committed as `ops/bootstrap-ec2.sh` and valid as user-data too, but the SSH path is the one verified here. |
 | **`docker compose build` failed:** `compose build requires buildx 0.17.0 or later`. Amazon Linux 2023's `docker` package ships without the Buildx plugin. | Installed Buildx v0.19.3 into the Docker CLI plugin directory. This is now part of `ops/bootstrap-ec2.sh`. |
 | **`ssm:StartSession` denied**, so Session Manager could not be used for administration. | SSH is used instead, scoped to a single source IP. This is a deviation from the intended design — see *Deviations* below. |
 | **Secrets Manager unusable in this account.** The user lacks `secretsmanager:ListSecrets`, and the instance role lacks `secretsmanager:GetSecretValue` (verified from the instance). | The GEE key is placed on the instance over SSH instead. The bootstrap script still attempts a Secrets Manager fetch first and falls back to a placeholder, so it will use Secrets Manager automatically once the permission exists. |
@@ -185,8 +185,10 @@ as it was shared over email during this assessment.
 This deployment is deliberately manual, matching the brief. The path to an
 automated release process is below. It is not hypothetical: it is
 **implemented in this repository** and was proven end to end — including
-several genuine red-to-green failures — in a separate AWS account where the
-required permissions were available.
+several genuine red-to-green failures Those resources have since been torn
+down with `terraform destroy` to avoid leaving cost or a stored credential
+behind; the Terraform code, its `terraform test` suites, and the GitHub
+Actions run history remain as the record.
 
 **Tooling:** GitHub Actions, Terraform, Amazon ECR, AWS Systems Manager,
 gitleaks.

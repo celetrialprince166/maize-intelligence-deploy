@@ -16,15 +16,6 @@ terraform {
     }
   }
 
-  backend "s3" {
-    bucket = "maize-tfstate-183631301567-us-east-1"
-    key    = "bootstrap/terraform.tfstate"
-    region = "us-east-1"
-    # No dynamodb_table here on purpose: the lock table is one of the two
-    # resources THIS config creates, so it can't depend on itself existing
-    # for locking to work on the very first apply. Fine in practice —
-    # bootstrap is applied rarely and by one person.
-  }
 }
 
 provider "aws" {

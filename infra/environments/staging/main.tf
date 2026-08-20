@@ -36,6 +36,9 @@ module "dynamodb" {
 module "ecr" {
   source      = "../../modules/ecr"
   name_prefix = var.name_prefix
+  # Staging images are rebuildable from a tagged commit, so a teardown
+  # shouldn't need manual image deletion first.
+  force_delete = true
 }
 
 module "secrets" {

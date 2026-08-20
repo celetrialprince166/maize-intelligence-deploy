@@ -12,10 +12,13 @@
 #
 # MAPBOX_TOKEN is optional (blank basemap without it); see below.
 #
-# It can also be pasted into the EC2 "User data" field at launch — but note
-# the console's User data box did NOT reliably receive content during this
-# deployment (it arrived as 0 bytes), so running it over SSH is the verified
-# path. See DEPLOYMENT.md, "Issues encountered".
+# This script is also valid EC2 user-data and can be pasted into the "User
+# data" field at launch. During this deployment the field was populated
+# programmatically rather than typed, the value never registered with the
+# launch form, and the instance received 0 bytes — so the SSH path above is
+# the one actually verified here. Running it over SSH also streams the build
+# output live, which user-data does not. See DEPLOYMENT.md, "Issues
+# encountered".
 #
 # The GEE service-account key is NOT provisioned here: this account's
 # instance role lacks secretsmanager:GetSecretValue, so the script falls back

@@ -8,6 +8,13 @@ resource "aws_ecr_repository" "repo" {
   name                 = "${var.name_prefix}-${each.key}"
   image_tag_mutability = "IMMUTABLE"
 
+  # Without this, `terraform destroy` fails on any repo that still holds
+  # images (RepositoryNotEmptyException) and the teardown has to be finished
+  # by hand. Safe for a staging registry whose images are all rebuildable
+  # from a tagged commit; for production, leave it false so images can't be
+  # removed by an accidental destroy.
+  force_delete = var.force_delete
+
   image_scanning_configuration {
     scan_on_push = true
   }
