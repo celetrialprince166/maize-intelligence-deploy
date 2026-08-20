@@ -6,7 +6,7 @@ Submission for the BigDataGhana Cloud Engineering practical assessment.
 
 **100.57.168.232**
 
-Instance `i-00c8fe97b59374db7` — t3.small, Amazon Linux 2023, in the
+Instance `i-00c8fe97b59374db7` — t3.micro, Amazon Linux 2023, in the
 assessment account **711726112778** (`us-east-1`).
 
 This is an auto-assigned public IP, not an Elastic IP: `ec2:AllocateAddress`
@@ -53,7 +53,7 @@ one.
    application's data access code exactly, so no schema work was needed.
 2. Created an SSH key pair (`maize-staging-admin`) for administrative access.
 3. Launched **one** EC2 instance via the console:
-   - Amazon Linux 2023, t3.small, 30 GiB gp3 root volume
+   - Amazon Linux 2023, t3.micro (1 GiB RAM), 30 GiB gp3 root volume
    - IAM instance profile: `EC2-DynamoDB-StagingRole`
    - Security group: HTTP (80) and HTTPS (443) from anywhere; SSH (22)
      restricted to the deploying workstation's IP only
@@ -78,7 +78,7 @@ one.
 | `http://100.57.168.232/` | 301 redirect to HTTPS |
 | `https://100.57.168.232/health` | `{"status":"ok","service":"maize-intelligence"}` |
 | `https://100.57.168.232/` | HTTP 200, SPA served |
-| `POST /api/analyze` with a Northern Ghana polygon | Real result from live Sentinel-2 imagery: `classification: maize`, `confidence: 0.618`, `yield_mt_ha: 2.049`, plus NDVI/EVI/NDMI time series |
+| `POST /api/analyze` with a Northern Ghana polygon | Real result from live Sentinel-2 imagery in **73 s**: `classification: maize`, `confidence: 0.618`, `yield_mt_ha: 2.049`, plus NDVI/EVI/NDMI time series |
 | Instance identity | `arn:aws:sts::711726112778:assumed-role/EC2-DynamoDB-StagingRole/i-00c8fe97b59374db7` |
 | DynamoDB via the role (AWS CLI on the instance) | `PutItem` → `Query` (read back) → `DeleteItem` all succeeded, test item removed |
 | Cognito sign-in | `USER_PASSWORD_AUTH` with the supplied `admin@maizeintelligence.com` credentials returned a valid ID token |
@@ -92,7 +92,7 @@ one.
 |---|---|
 | Single EC2 instance, Docker Compose, no load balancer | The brief requires exactly one instance and the app served from its public IP. A load balancer would front it with its own address. |
 | Images built on the instance from the public repo | This account cannot push to ECR, and building locally removes any need for registry credentials on the box. Trade-off: a ~10 minute first build. |
-| 2 GiB swap added before building | The frontend bundle (3,100+ modules) exhausts 2 GiB RAM on t3.small during `vite build`. Swap makes the build reliable without paying for a larger instance. |
+| 2 GiB swap plus an explicit Node heap limit before building | The frontend bundle (~3,100 modules) exhausts the RAM on a small instance during `vite build`. Swap alone is not enough: Node sizes its heap from *physical* RAM and never spills into swap on its own, so `NODE_OPTIONS=--max-old-space-size=3072` is set in `frontend/Dockerfile`. Together these let the build succeed on a 1 GiB host instead of requiring a larger instance. |
 | 30 GiB root volume | The Amazon Linux 2023 AMI snapshot requires ≥ 30 GiB; 20 GiB fails at launch. |
 | Backend never published to the host | nginx is the single ingress. The API is only reachable through the reverse proxy, so there is no second public attack surface. |
 | GEE key bind-mounted read-only from the host, never baked into an image | Keeps the credential out of image layers and out of git. Mode 644 rather than 600 because the backend container runs as a non-root user and a bind mount preserves host ownership. |
@@ -109,6 +109,8 @@ one.
 | **`iam:ListInstanceProfiles` denied**, so the launch wizard's IAM instance profile dropdown could not populate. | Used the wizard's "Specify a custom value" option to enter `EC2-DynamoDB-StagingRole` directly. |
 | **An earlier instance came up but served nothing, with no diagnostic trail.** The provisioning script was supplied as user-data, but nothing was installed. | Launching with an SSH key pair made the cause visible in one command: `/var/lib/cloud/instance/user-data.txt` was **0 bytes** — the script had never reached the instance, because the launch form's User data box had been filled programmatically and the value never registered with the form. Fixed by uploading the script with the console's **"Choose file"** control instead, which delivers the file contents directly; the final instance was provisioned entirely by user-data on first boot. Lesson worth keeping: user-data failing silently is indistinguishable from a healthy instance from the outside, so verify `user-data.txt` is non-empty rather than assuming delivery. |
 | **`docker compose build` failed on a rebuild** even though the same failure had been "fixed" earlier. | The earlier fix had been applied by hand on the instance and never written back into `ops/bootstrap-ec2.sh`, while the documentation already claimed it was in the script. Relaunching from scratch exposed the gap. Buildx installation is now genuinely part of the script (pinned to v0.19.3) and was re-verified by re-running it end to end. |
+| **The frontend build died with `JavaScript heap out of memory`** despite the bootstrap script adding 2 GiB of swap. | Node sizes its heap from *physical* RAM and will not spill into swap unless told to, so the swapfile was irrelevant to it. Fixed with `NODE_OPTIONS=--max-old-space-size=3072` in `frontend/Dockerfile`, which lets the bundler use the swap. The build now succeeds on a 1 GiB instance rather than depending on a particular instance size. |
+| **`POST /api/analyze` returned a 502** while the backend was still working normally. | The nginx log gave it away: `upstream timed out (110) while reading response header`. nginx defaults `proxy_read_timeout` to 60 s, but `/analyze` trains a Random Forest in Earth Engine per request and takes ~73 s on this instance — so nginx was cutting off requests the backend would have completed. Set connect/send/read timeouts on the `/api/` location to match the backend's own 300 s budget. This had gone unnoticed on a faster instance where the call happened to finish just inside 60 s. |
 | **`ssm:StartSession` denied**, so Session Manager could not be used for administration. | SSH is used instead, scoped to a single source IP. This is a deviation from the intended design — see *Deviations* below. |
 | **Secrets Manager unusable in this account.** The user lacks `secretsmanager:ListSecrets`, and the instance role lacks `secretsmanager:GetSecretValue` (verified from the instance). | The GEE key is placed on the instance over SSH instead. The bootstrap script still attempts a Secrets Manager fetch first and falls back to a placeholder, so it will use Secrets Manager automatically once the permission exists. |
 | A hardcoded Mapbox token in the frontend source was flagged by secret scanning. | Replaced with a `VITE_MAPBOX_TOKEN` build argument. Mapbox `pk.*` tokens are public by design; the real control is a domain restriction in the Mapbox dashboard. |
