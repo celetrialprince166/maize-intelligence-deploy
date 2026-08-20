@@ -19,6 +19,13 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_COGNITO_USER_POOL_ID=${VITE_COGNITO_USER_POOL_ID} \
     VITE_COGNITO_CLIENT_ID=${VITE_COGNITO_CLIENT_ID} \
     VITE_MAPBOX_TOKEN=${VITE_MAPBOX_TOKEN}
+
+# Node sizes its heap from *physical* RAM, so on a small instance the build
+# dies with "JavaScript heap out of memory" while bundling this app's ~3,100
+# modules — even when plenty of swap is available, because Node never tries
+# to use it. Raising the limit explicitly lets the build spill into swap and
+# succeed on a 1 GiB host; on larger hosts it simply never reaches the cap.
+ENV NODE_OPTIONS=--max-old-space-size=3072
 RUN npm run build
 
 # The master process runs as root (the official nginx:alpine image's own
