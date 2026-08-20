@@ -75,7 +75,9 @@ one.
 | `https://3.235.89.135/` | HTTP 200, SPA served |
 | `POST /api/analyze` with a Northern Ghana polygon | Real result from live Sentinel-2 imagery: `classification: maize`, `confidence: 0.618`, `yield_mt_ha: 2.049`, plus NDVI/EVI/NDMI time series |
 | Instance identity | `arn:aws:sts::711726112778:assumed-role/EC2-DynamoDB-StagingRole/i-0b9eca46089b096ba` |
-| DynamoDB via the role | `PutItem` → `Query` (read back) → `DeleteItem` all succeeded, test item removed |
+| DynamoDB via the role (AWS CLI on the instance) | `PutItem` → `Query` (read back) → `DeleteItem` all succeeded, test item removed |
+| Cognito sign-in | `USER_PASSWORD_AUTH` with the supplied `admin@maizeintelligence.com` credentials returned a valid ID token |
+| **Application** → DynamoDB via the role | `POST /api/farms/` created a record (server-computed area 121.56 ha), `GET /api/farms/` read it back, `DELETE /api/farms/{id}` removed it — proving the running app, not just the CLI, reaches DynamoDB with role-derived credentials |
 | Credentials on the instance | No `~/.aws`; no `AKIA…` string anywhere in the app tree or key file |
 | Host listening ports | 80, 443 (published by nginx) and 22 (SSH) only — backend 8000 is internal to the Docker network |
 
@@ -105,6 +107,7 @@ one.
 | **`ssm:StartSession` denied**, so Session Manager could not be used for administration. | SSH is used instead, scoped to a single source IP. This is a deviation from the intended design — see *Deviations* below. |
 | **Secrets Manager unusable in this account.** The user lacks `secretsmanager:ListSecrets`, and the instance role lacks `secretsmanager:GetSecretValue` (verified from the instance). | The GEE key is placed on the instance over SSH instead. The bootstrap script still attempts a Secrets Manager fetch first and falls back to a placeholder, so it will use Secrets Manager automatically once the permission exists. |
 | A hardcoded Mapbox token in the frontend source was flagged by secret scanning. | Replaced with a `VITE_MAPBOX_TOKEN` build argument. Mapbox `pk.*` tokens are public by design; the real control is a domain restriction in the Mapbox dashboard. |
+| **SSH access broke mid-deployment** when the administrator's ISP reassigned their public IP, because the security group is pinned to a single `/32`. | Expected behaviour of the restriction, not a fault — the application itself was unaffected (80/443 remain open). Re-establishing SSH means updating the inbound rule to the new address. This is the practical cost of IP-pinned SSH on a dynamic connection, and one more reason to move administration to SSM Session Manager, which needs no inbound rule at all. |
 | nginx would have passed raw backend 5xx responses (including tracebacks) to clients. | Added `proxy_intercept_errors` with a generic JSON error page, scoped to 5xx only so genuine 4xx API error bodies still reach the frontend. |
 
 ### Deviations from the intended design, and why
