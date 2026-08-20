@@ -2,6 +2,16 @@
 
 A geospatial web application for maize crop classification and yield estimation in Ghana, powered by Google Earth Engine and machine learning.
 
+## Live staging deployment
+
+**https://3.235.89.135/** — EC2 public IP `3.235.89.135` (self-signed
+certificate, so browsers show a warning that must be accepted).
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the full deployment record:
+approach, steps, technical decisions, issues encountered, security
+recommendations and the proposed CI/CD pipeline. The bootstrap script used
+to provision the instance is [`ops/bootstrap-ec2.sh`](./ops/bootstrap-ec2.sh).
+
 ## Overview
 
 The system uses Sentinel-2 satellite imagery processed through Google Earth Engine to:
@@ -100,8 +110,9 @@ The frontend will be available at http://localhost:5174
 |----------|-------------|---------|
 | VITE_API_URL | Backend API URL | http://127.0.0.1:8000 |
 | VITE_COGNITO_REGION | Cognito region | us-east-1 |
-| VITE_COGNITO_USER_POOL_ID | Cognito User Pool ID | us-east-1_GnqgOdGme |
-| VITE_COGNITO_CLIENT_ID | Cognito App Client ID | (from AWS Console) |
+| VITE_COGNITO_USER_POOL_ID | Cognito User Pool ID | us-east-1_vfe6JbU6G |
+| VITE_COGNITO_CLIENT_ID | Cognito App Client ID | 744ah7v7iddsshrm9mm02bnd9i |
+| VITE_MAPBOX_TOKEN | Mapbox public token (optional; map tiles are blank without it) | pk.… |
 
 ## Required Files (Not in Repo)
 
