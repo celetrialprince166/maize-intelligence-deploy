@@ -4,7 +4,7 @@ A geospatial web application for maize crop classification and yield estimation 
 
 ## Live staging deployment
 
-**https://3.235.89.135/** — EC2 public IP `3.235.89.135` (self-signed
+**https://100.57.168.232/** — EC2 public IP `100.57.168.232` (self-signed
 certificate, so browsers show a warning that must be accepted).
 
 See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the full deployment record:

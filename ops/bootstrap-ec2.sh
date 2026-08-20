@@ -48,7 +48,19 @@ if [ ! -x /usr/local/lib/docker/cli-plugins/docker-compose ]; then
     -o /usr/local/lib/docker/cli-plugins/docker-compose
   chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 fi
+
+# Buildx is a hard requirement, not an optional extra: Amazon Linux 2023's
+# `docker` package ships without it, and `docker compose build` fails with
+# "compose build requires buildx 0.17.0 or later" if it is missing. Pinned
+# rather than :latest so a rebuild months from now behaves the same.
+if [ ! -x /usr/local/lib/docker/cli-plugins/docker-buildx ]; then
+  curl -sSL https://github.com/docker/buildx/releases/download/v0.19.3/buildx-v0.19.3.linux-amd64 \
+    -o /usr/local/lib/docker/cli-plugins/docker-buildx
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+fi
+
 docker compose version
+docker buildx version
 
 stage clone
 rm -rf /opt/src

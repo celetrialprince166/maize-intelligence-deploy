@@ -4,9 +4,9 @@ Submission for the BigDataGhana Cloud Engineering practical assessment.
 
 ## EC2 public IP address
 
-**3.235.89.135**
+**100.57.168.232**
 
-Instance `i-0b9eca46089b096ba` — t3.small, Amazon Linux 2023, in the
+Instance `i-00c8fe97b59374db7` — t3.small, Amazon Linux 2023, in the
 assessment account **711726112778** (`us-east-1`).
 
 This is an auto-assigned public IP, not an Elastic IP: `ec2:AllocateAddress`
@@ -17,13 +17,13 @@ going to be mapped to it, attaching an Elastic IP first is worth doing — see
 
 ## Website URL served from the EC2 public IP
 
-**https://3.235.89.135/**
+**https://100.57.168.232/**
 
-- `http://3.235.89.135/` returns a 301 redirect to HTTPS.
+- `http://100.57.168.232/` returns a 301 redirect to HTTPS.
 - The TLS certificate is **self-signed**, so browsers show a warning that
   must be clicked through. There is no domain yet to issue a CA-signed
   certificate against; the upgrade path is in *Security recommendations*.
-- API health check: **https://3.235.89.135/health**
+- API health check: **https://100.57.168.232/health**
 
 ## Summary of the deployment approach
 
@@ -58,23 +58,28 @@ one.
    - Security group: HTTP (80) and HTTPS (443) from anywhere; SSH (22)
      restricted to the deploying workstation's IP only
    - IMDSv2 required (console default on this AMI)
-4. Ran `ops/bootstrap-ec2.sh` on the instance over SSH. It adds swap,
-   installs Docker + Compose + Buildx, clones this repository, writes a
-   non-secret `.env`, builds both images, and starts the stack.
+4. Supplied `ops/bootstrap-ec2.sh` as **EC2 user-data** at launch (uploaded
+   via the console's "Choose file" control rather than pasted). It adds
+   swap, installs Docker + Compose + Buildx, clones this repository, writes
+   a non-secret `.env`, builds both images, and starts the stack — all
+   automatically on first boot, with no manual step.
 5. Copied the Google Earth Engine service-account key to
    `/opt/gee-key.json` over SSH (mode 644, bind-mounted read-only into the
-   backend container) and restarted the backend.
+   backend container) and restarted the backend. This is deliberately *not*
+   in user-data: anything placed there is readable by any process on the
+   instance via IMDS, and by any principal holding
+   `ec2:DescribeInstanceAttribute`, so a private key does not belong in it.
 6. Verified the deployment end to end (below).
 
 ### Verification performed
 
 | Check | Result |
 |---|---|
-| `http://3.235.89.135/` | 301 redirect to HTTPS |
-| `https://3.235.89.135/health` | `{"status":"ok","service":"maize-intelligence"}` |
-| `https://3.235.89.135/` | HTTP 200, SPA served |
+| `http://100.57.168.232/` | 301 redirect to HTTPS |
+| `https://100.57.168.232/health` | `{"status":"ok","service":"maize-intelligence"}` |
+| `https://100.57.168.232/` | HTTP 200, SPA served |
 | `POST /api/analyze` with a Northern Ghana polygon | Real result from live Sentinel-2 imagery: `classification: maize`, `confidence: 0.618`, `yield_mt_ha: 2.049`, plus NDVI/EVI/NDMI time series |
-| Instance identity | `arn:aws:sts::711726112778:assumed-role/EC2-DynamoDB-StagingRole/i-0b9eca46089b096ba` |
+| Instance identity | `arn:aws:sts::711726112778:assumed-role/EC2-DynamoDB-StagingRole/i-00c8fe97b59374db7` |
 | DynamoDB via the role (AWS CLI on the instance) | `PutItem` → `Query` (read back) → `DeleteItem` all succeeded, test item removed |
 | Cognito sign-in | `USER_PASSWORD_AUTH` with the supplied `admin@maizeintelligence.com` credentials returned a valid ID token |
 | **Application** → DynamoDB via the role | `POST /api/farms/` created a record (server-computed area 121.56 ha), `GET /api/farms/` read it back, `DELETE /api/farms/{id}` removed it — proving the running app, not just the CLI, reaches DynamoDB with role-derived credentials |
@@ -102,8 +107,8 @@ one.
 | **Insufficient IAM permissions blocked the assessment initially.** `iam:ListRoles`, `iam:ListPolicies`, `iam:CreateRole` and `ec2:RunInstances` were all denied, so neither the required role nor an instance could be created. | Raised with the account administrator. Permissions were widened and `EC2-DynamoDB-StagingRole` was made available, at which point the deployment could proceed. |
 | **AWS CLI could not authenticate**, and CloudShell could not start ("Unable to create the environment"), so no command-line access to the account was available. | Worked through the console, then used SSH to the instance for all command-line work. |
 | **`iam:ListInstanceProfiles` denied**, so the launch wizard's IAM instance profile dropdown could not populate. | Used the wizard's "Specify a custom value" option to enter `EC2-DynamoDB-StagingRole` directly. |
-| **The instance came up but served nothing, twice, with no diagnostic trail.** The provisioning script was supplied as EC2 user-data, but nothing was ever installed. | Launching with an SSH key pair made the cause visible in one command: `/var/lib/cloud/instance/user-data.txt` was **0 bytes** — the script had never reached the instance. The launch form had been populated programmatically rather than typed, and the value never registered with the form, so the launch request carried empty user-data. Resolved by running the identical script over SSH, which also streams build output live. Committed as `ops/bootstrap-ec2.sh` and valid as user-data too, but the SSH path is the one verified here. |
-| **`docker compose build` failed:** `compose build requires buildx 0.17.0 or later`. Amazon Linux 2023's `docker` package ships without the Buildx plugin. | Installed Buildx v0.19.3 into the Docker CLI plugin directory. This is now part of `ops/bootstrap-ec2.sh`. |
+| **An earlier instance came up but served nothing, with no diagnostic trail.** The provisioning script was supplied as user-data, but nothing was installed. | Launching with an SSH key pair made the cause visible in one command: `/var/lib/cloud/instance/user-data.txt` was **0 bytes** — the script had never reached the instance, because the launch form's User data box had been filled programmatically and the value never registered with the form. Fixed by uploading the script with the console's **"Choose file"** control instead, which delivers the file contents directly; the final instance was provisioned entirely by user-data on first boot. Lesson worth keeping: user-data failing silently is indistinguishable from a healthy instance from the outside, so verify `user-data.txt` is non-empty rather than assuming delivery. |
+| **`docker compose build` failed on a rebuild** even though the same failure had been "fixed" earlier. | The earlier fix had been applied by hand on the instance and never written back into `ops/bootstrap-ec2.sh`, while the documentation already claimed it was in the script. Relaunching from scratch exposed the gap. Buildx installation is now genuinely part of the script (pinned to v0.19.3) and was re-verified by re-running it end to end. |
 | **`ssm:StartSession` denied**, so Session Manager could not be used for administration. | SSH is used instead, scoped to a single source IP. This is a deviation from the intended design — see *Deviations* below. |
 | **Secrets Manager unusable in this account.** The user lacks `secretsmanager:ListSecrets`, and the instance role lacks `secretsmanager:GetSecretValue` (verified from the instance). | The GEE key is placed on the instance over SSH instead. The bootstrap script still attempts a Secrets Manager fetch first and falls back to a placeholder, so it will use Secrets Manager automatically once the permission exists. |
 | A hardcoded Mapbox token in the frontend source was flagged by secret scanning. | Replaced with a `VITE_MAPBOX_TOKEN` build argument. Mapbox `pk.*` tokens are public by design; the real control is a domain restriction in the Mapbox dashboard. |
